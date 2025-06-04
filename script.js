@@ -6,6 +6,8 @@ let robes = [];
 // DOM Elements
 const startBorrowScanBtn = document.getElementById('startBorrowScan');
 const startReturnScanBtn = document.getElementById('startReturnScan');
+const closeBorrowScanBtn = document.getElementById('closeBorrowScan');
+const closeReturnScanBtn = document.getElementById('closeReturnScan');
 const exportCSVBtn = document.getElementById('exportCSV');
 const exportTXTBtn = document.getElementById('exportTXT');
 const historyTable = document.getElementById('historyTable').getElementsByTagName('tbody')[0];
@@ -32,7 +34,10 @@ async function loadData() {
         const querySnapshot = await getDocs(collection(window.db, "robes"));
         robes = [];
         querySnapshot.forEach((doc) => {
-            robes.push({ id: doc.id, ...doc.data() });
+            robes.push({ 
+                firebaseId: doc.id,  // שמירת ה-ID של Firebase בנפרד
+                ...doc.data() 
+            });
         });
         updateStats();
         updateHistoryTable();
@@ -58,7 +63,7 @@ function updateHistoryTable() {
     historyTable.innerHTML = '';
     robes.forEach(robe => {
         const row = historyTable.insertRow();
-        row.insertCell(0).textContent = robe.id;
+        row.insertCell(0).textContent = robe.robeId;  // שימוש במספר הגלימה האמיתי
         row.insertCell(1).textContent = new Date(robe.borrowDate).toLocaleString('he-IL');
         row.insertCell(2).textContent = robe.returnDate ? new Date(robe.returnDate).toLocaleString('he-IL') : '-';
         row.insertCell(3).textContent = getStatusText(robe.status);
@@ -78,7 +83,7 @@ function getStatusText(status) {
 // Handle QR code scan for borrowing
 async function onBorrowScanSuccess(decodedText) {
     const robeId = decodedText.trim();
-    const existingRobe = robes.find(r => r.id === robeId);
+    const existingRobe = robes.find(r => r.robeId === robeId);  // חיפוש לפי מספר הגלימה
 
     if (existingRobe) {
         alert('גלימה זו כבר מושאלת!');
@@ -88,7 +93,7 @@ async function onBorrowScanSuccess(decodedText) {
             const { collection, addDoc } = window.firebaseFunctions;
             // Add new robe to Firebase
             const docRef = await addDoc(collection(window.db, "robes"), {
-                id: robeId,
+                robeId: robeId,  // שמירת מספר הגלימה
                 borrowDate: new Date().toISOString(),
                 returnDate: null,
                 status: 'borrowed'
@@ -96,8 +101,8 @@ async function onBorrowScanSuccess(decodedText) {
 
             // Update local data
             robes.push({
-                id: docRef.id,
-                robeId: robeId,
+                firebaseId: docRef.id,  // שמירת ה-ID של Firebase
+                robeId: robeId,  // שמירת מספר הגלימה
                 borrowDate: new Date().toISOString(),
                 returnDate: null,
                 status: 'borrowed'
@@ -111,6 +116,7 @@ async function onBorrowScanSuccess(decodedText) {
             if (borrowScanner) {
                 borrowScanner.stop().then(() => {
                     borrowScanner = null;
+                    closeBorrowScanBtn.style.display = 'none';
                 }).catch(err => {
                     console.error("Error stopping scanner:", err);
                 });
@@ -125,7 +131,7 @@ async function onBorrowScanSuccess(decodedText) {
 // Handle QR code scan for returning
 async function onReturnScanSuccess(decodedText) {
     const robeId = decodedText.trim();
-    const existingRobe = robes.find(r => r.id === robeId);
+    const existingRobe = robes.find(r => r.robeId === robeId);  // חיפוש לפי מספר הגלימה
 
     if (!existingRobe) {
         alert('גלימה זו לא מושאלת!');
@@ -136,7 +142,7 @@ async function onReturnScanSuccess(decodedText) {
             await waitForFirebase();
             const { doc, updateDoc } = window.firebaseFunctions;
             // Update robe in Firebase
-            const robeRef = doc(window.db, "robes", existingRobe.id);
+            const robeRef = doc(window.db, "robes", existingRobe.firebaseId);  // שימוש ב-ID של Firebase
             await updateDoc(robeRef, {
                 status: 'returned',
                 returnDate: new Date().toISOString()
@@ -154,6 +160,7 @@ async function onReturnScanSuccess(decodedText) {
             if (returnScanner) {
                 returnScanner.stop().then(() => {
                     returnScanner = null;
+                    closeReturnScanBtn.style.display = 'none';
                 }).catch(err => {
                     console.error("Error stopping scanner:", err);
                 });
@@ -171,6 +178,7 @@ async function initBorrowScanner() {
         if (!borrowScanner) {
             borrowScanner = new Html5Qrcode("borrowReader");
         }
+        closeBorrowScanBtn.style.display = 'flex';
         return true;
     } catch (err) {
         console.error("Error initializing borrow scanner:", err);
@@ -184,6 +192,7 @@ async function initReturnScanner() {
         if (!returnScanner) {
             returnScanner = new Html5Qrcode("returnReader");
         }
+        closeReturnScanBtn.style.display = 'flex';
         return true;
     } catch (err) {
         console.error("Error initializing return scanner:", err);
@@ -238,13 +247,39 @@ startReturnScanBtn.addEventListener('click', async () => {
     }
 });
 
+// Close scanning for borrowing
+closeBorrowScanBtn.addEventListener('click', async () => {
+    if (borrowScanner) {
+        try {
+            await borrowScanner.stop();
+            borrowScanner = null;
+            closeBorrowScanBtn.style.display = 'none';
+        } catch (err) {
+            console.error("Error stopping borrow scanner:", err);
+        }
+    }
+});
+
+// Close scanning for returning
+closeReturnScanBtn.addEventListener('click', async () => {
+    if (returnScanner) {
+        try {
+            await returnScanner.stop();
+            returnScanner = null;
+            closeReturnScanBtn.style.display = 'none';
+        } catch (err) {
+            console.error("Error stopping return scanner:", err);
+        }
+    }
+});
+
 // Export to CSV
 exportCSVBtn.addEventListener('click', () => {
     const headers = ['מספר גלימה', 'תאריך השאלה', 'תאריך החזרה', 'סטטוס'];
     const csvContent = [
         headers.join(','),
         ...robes.map(robe => [
-            robe.robeId,
+            robe.robeId,  // שימוש במספר הגלימה האמיתי
             new Date(robe.borrowDate).toLocaleString('he-IL'),
             robe.returnDate ? new Date(robe.returnDate).toLocaleString('he-IL') : '-',
             getStatusText(robe.status)
@@ -258,7 +293,7 @@ exportCSVBtn.addEventListener('click', () => {
 // Export to TXT
 exportTXTBtn.addEventListener('click', () => {
     const txtContent = robes.map(robe => 
-        `מספר גלימה: ${robe.robeId}
+        `מספר גלימה: ${robe.robeId}  // שימוש במספר הגלימה האמיתי
 תאריך השאלה: ${new Date(robe.borrowDate).toLocaleString('he-IL')}
 תאריך החזרה: ${robe.returnDate ? new Date(robe.returnDate).toLocaleString('he-IL') : '-'}
 סטטוס: ${getStatusText(robe.status)}
