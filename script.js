@@ -2,6 +2,9 @@
 let borrowScanner = null;
 let returnScanner = null;
 let robes = [];
+let lastScannedCode = null;
+let lastScanTime = 0;
+const SCAN_COOLDOWN = 2000; // 2 seconds cooldown between scans
 
 // DOM Elements
 const startBorrowScanBtn = document.getElementById('startBorrowScan');
@@ -11,6 +14,17 @@ const closeReturnScanBtn = document.getElementById('closeReturnScan');
 const exportCSVBtn = document.getElementById('exportCSV');
 const exportTXTBtn = document.getElementById('exportTXT');
 const historyTable = document.getElementById('historyTable').getElementsByTagName('tbody')[0];
+
+// Check if code was recently scanned
+function isCodeRecentlyScanned(code) {
+    const now = Date.now();
+    if (code === lastScannedCode && (now - lastScanTime) < SCAN_COOLDOWN) {
+        return true;
+    }
+    lastScannedCode = code;
+    lastScanTime = now;
+    return false;
+}
 
 // Wait for Firebase to be ready
 function waitForFirebase() {
@@ -83,6 +97,12 @@ function getStatusText(status) {
 // Handle QR code scan for borrowing
 async function onBorrowScanSuccess(decodedText) {
     const robeId = decodedText.trim();
+    
+    // Check if this code was recently scanned
+    if (isCodeRecentlyScanned(robeId)) {
+        return;
+    }
+
     const existingRobe = robes.find(r => r.robeId === robeId);  // חיפוש לפי מספר הגלימה
 
     if (existingRobe) {
@@ -131,6 +151,12 @@ async function onBorrowScanSuccess(decodedText) {
 // Handle QR code scan for returning
 async function onReturnScanSuccess(decodedText) {
     const robeId = decodedText.trim();
+    
+    // Check if this code was recently scanned
+    if (isCodeRecentlyScanned(robeId)) {
+        return;
+    }
+
     const existingRobe = robes.find(r => r.robeId === robeId);  // חיפוש לפי מספר הגלימה
 
     if (!existingRobe) {
