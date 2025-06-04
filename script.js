@@ -5,9 +5,7 @@ let robes = JSON.parse(localStorage.getItem('robes')) || [];
 
 // DOM Elements
 const startBorrowScanBtn = document.getElementById('startBorrowScan');
-const stopBorrowScanBtn = document.getElementById('stopBorrowScan');
 const startReturnScanBtn = document.getElementById('startReturnScan');
-const stopReturnScanBtn = document.getElementById('stopReturnScan');
 const exportCSVBtn = document.getElementById('exportCSV');
 const exportTXTBtn = document.getElementById('exportTXT');
 const historyTable = document.getElementById('historyTable').getElementsByTagName('tbody')[0];
@@ -68,7 +66,11 @@ function onBorrowScanSuccess(decodedText) {
         
         // Stop scanner after successful scan
         if (borrowScanner) {
-            borrowScanner.stop();
+            borrowScanner.stop().then(() => {
+                borrowScanner = null;
+            }).catch(err => {
+                console.error("Error stopping scanner:", err);
+            });
         }
     }
 }
@@ -94,68 +96,85 @@ function onReturnScanSuccess(decodedText) {
         
         // Stop scanner after successful scan
         if (returnScanner) {
-            returnScanner.stop();
+            returnScanner.stop().then(() => {
+                returnScanner = null;
+            }).catch(err => {
+                console.error("Error stopping scanner:", err);
+            });
         }
     }
 }
 
 // Initialize QR Scanner
-function initBorrowScanner() {
-    if (!borrowScanner) {
-        borrowScanner = new Html5Qrcode("borrowReader");
+async function initBorrowScanner() {
+    try {
+        if (!borrowScanner) {
+            borrowScanner = new Html5Qrcode("borrowReader");
+        }
+        return true;
+    } catch (err) {
+        console.error("Error initializing borrow scanner:", err);
+        alert("שגיאה באתחול המצלמה. אנא נסה שוב.");
+        return false;
     }
 }
 
-function initReturnScanner() {
-    if (!returnScanner) {
-        returnScanner = new Html5Qrcode("returnReader");
+async function initReturnScanner() {
+    try {
+        if (!returnScanner) {
+            returnScanner = new Html5Qrcode("returnReader");
+        }
+        return true;
+    } catch (err) {
+        console.error("Error initializing return scanner:", err);
+        alert("שגיאה באתחול המצלמה. אנא נסה שוב.");
+        return false;
     }
 }
 
 // Start scanning for borrowing
-startBorrowScanBtn.addEventListener('click', () => {
-    initBorrowScanner();
-    
-    borrowScanner.start(
-        { facingMode: "environment" },
-        {
-            fps: 10,
-            qrbox: { width: 250, height: 250 }
-        },
-        onBorrowScanSuccess,
-        (error) => {
-            // Ignore errors
-        }
-    );
-});
+startBorrowScanBtn.addEventListener('click', async () => {
+    try {
+        const initialized = await initBorrowScanner();
+        if (!initialized) return;
 
-// Start scanning for returning
-startReturnScanBtn.addEventListener('click', () => {
-    initReturnScanner();
-    
-    returnScanner.start(
-        { facingMode: "environment" },
-        {
-            fps: 10,
-            qrbox: { width: 250, height: 250 }
-        },
-        onReturnScanSuccess,
-        (error) => {
-            // Ignore errors
-        }
-    );
-});
-
-// Stop scanning
-stopBorrowScanBtn.addEventListener('click', () => {
-    if (borrowScanner) {
-        borrowScanner.stop();
+        await borrowScanner.start(
+            { facingMode: "environment" },
+            {
+                fps: 10,
+                qrbox: { width: 250, height: 250 }
+            },
+            onBorrowScanSuccess,
+            (error) => {
+                // Ignore errors
+            }
+        );
+    } catch (err) {
+        console.error("Error starting borrow scanner:", err);
+        alert("שגיאה בהפעלת המצלמה. אנא נסה שוב.");
     }
 });
 
-stopReturnScanBtn.addEventListener('click', () => {
-    if (returnScanner) {
-        returnScanner.stop();
+// Start scanning for returning
+startReturnScanBtn.addEventListener('click', async () => {
+    try {
+        const initialized = await initReturnScanner();
+        if (!initialized) return;
+
+        await returnScanner.start(
+            { facingMode: "environment" },
+            {
+                fps: 10,
+                qrbox: { width: 250, height: 250 }
+            },
+            onReturnScanSuccess,
+            (error) => {
+                // Ignore errors
+            }
+        );
+    } catch (err) {
+        console.error("Error starting return scanner:", err);
+        alert("שגיאה בהפעלת המצלמה. אנא נסה שוב.");
     }
 });
 
