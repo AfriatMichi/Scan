@@ -1,7 +1,7 @@
 // Initialize variables
 let borrowScanner = null;
 let returnScanner = null;
-let robes = JSON.parse(localStorage.getItem('robes')) || [];
+let robes = [];
 
 // DOM Elements
 const startBorrowScanBtn = document.getElementById('startBorrowScan');
@@ -9,6 +9,38 @@ const startReturnScanBtn = document.getElementById('startReturnScan');
 const exportCSVBtn = document.getElementById('exportCSV');
 const exportTXTBtn = document.getElementById('exportTXT');
 const historyTable = document.getElementById('historyTable').getElementsByTagName('tbody')[0];
+
+// Wait for Firebase to be ready
+function waitForFirebase() {
+    return new Promise((resolve) => {
+        const checkFirebase = () => {
+            if (window.firebaseFunctions && window.db) {
+                resolve();
+            } else {
+                setTimeout(checkFirebase, 100);
+            }
+        };
+        checkFirebase();
+    });
+}
+
+// Load data from Firebase
+async function loadData() {
+    try {
+        await waitForFirebase();
+        const { collection, getDocs } = window.firebaseFunctions;
+        const querySnapshot = await getDocs(collection(window.db, "robes"));
+        robes = [];
+        querySnapshot.forEach((doc) => {
+            robes.push({ id: doc.id, ...doc.data() });
+        });
+        updateStats();
+        updateHistoryTable();
+    } catch (error) {
+        console.error("Error loading data:", error);
+        alert("שגיאה בטעינת הנתונים. אנא רענן את הדף.");
+    }
+}
 
 // Update statistics
 function updateStats() {
@@ -44,39 +76,54 @@ function getStatusText(status) {
 }
 
 // Handle QR code scan for borrowing
-function onBorrowScanSuccess(decodedText) {
+async function onBorrowScanSuccess(decodedText) {
     const robeId = decodedText.trim();
     const existingRobe = robes.find(r => r.id === robeId);
 
     if (existingRobe) {
         alert('גלימה זו כבר מושאלת!');
     } else {
-        // Borrow new robe
-        robes.push({
-            id: robeId,
-            borrowDate: new Date().toISOString(),
-            returnDate: null,
-            status: 'borrowed'
-        });
-
-        // Save to localStorage and update UI
-        localStorage.setItem('robes', JSON.stringify(robes));
-        updateStats();
-        updateHistoryTable();
-        
-        // Stop scanner after successful scan
-        if (borrowScanner) {
-            borrowScanner.stop().then(() => {
-                borrowScanner = null;
-            }).catch(err => {
-                console.error("Error stopping scanner:", err);
+        try {
+            await waitForFirebase();
+            const { collection, addDoc } = window.firebaseFunctions;
+            // Add new robe to Firebase
+            const docRef = await addDoc(collection(window.db, "robes"), {
+                id: robeId,
+                borrowDate: new Date().toISOString(),
+                returnDate: null,
+                status: 'borrowed'
             });
+
+            // Update local data
+            robes.push({
+                id: docRef.id,
+                robeId: robeId,
+                borrowDate: new Date().toISOString(),
+                returnDate: null,
+                status: 'borrowed'
+            });
+
+            // Update UI
+            updateStats();
+            updateHistoryTable();
+            
+            // Stop scanner after successful scan
+            if (borrowScanner) {
+                borrowScanner.stop().then(() => {
+                    borrowScanner = null;
+                }).catch(err => {
+                    console.error("Error stopping scanner:", err);
+                });
+            }
+        } catch (error) {
+            console.error("Error adding robe:", error);
+            alert("שגיאה בשמירת הנתונים. אנא נסה שוב.");
         }
     }
 }
 
 // Handle QR code scan for returning
-function onReturnScanSuccess(decodedText) {
+async function onReturnScanSuccess(decodedText) {
     const robeId = decodedText.trim();
     const existingRobe = robes.find(r => r.id === robeId);
 
@@ -85,22 +132,35 @@ function onReturnScanSuccess(decodedText) {
     } else if (existingRobe.status === 'returned') {
         alert('גלימה זו כבר הוחזרה!');
     } else {
-        // Return robe
-        existingRobe.status = 'returned';
-        existingRobe.returnDate = new Date().toISOString();
-
-        // Save to localStorage and update UI
-        localStorage.setItem('robes', JSON.stringify(robes));
-        updateStats();
-        updateHistoryTable();
-        
-        // Stop scanner after successful scan
-        if (returnScanner) {
-            returnScanner.stop().then(() => {
-                returnScanner = null;
-            }).catch(err => {
-                console.error("Error stopping scanner:", err);
+        try {
+            await waitForFirebase();
+            const { doc, updateDoc } = window.firebaseFunctions;
+            // Update robe in Firebase
+            const robeRef = doc(window.db, "robes", existingRobe.id);
+            await updateDoc(robeRef, {
+                status: 'returned',
+                returnDate: new Date().toISOString()
             });
+
+            // Update local data
+            existingRobe.status = 'returned';
+            existingRobe.returnDate = new Date().toISOString();
+
+            // Update UI
+            updateStats();
+            updateHistoryTable();
+            
+            // Stop scanner after successful scan
+            if (returnScanner) {
+                returnScanner.stop().then(() => {
+                    returnScanner = null;
+                }).catch(err => {
+                    console.error("Error stopping scanner:", err);
+                });
+            }
+        } catch (error) {
+            console.error("Error updating robe:", error);
+            alert("שגיאה בעדכון הנתונים. אנא נסה שוב.");
         }
     }
 }
@@ -184,7 +244,7 @@ exportCSVBtn.addEventListener('click', () => {
     const csvContent = [
         headers.join(','),
         ...robes.map(robe => [
-            robe.id,
+            robe.robeId,
             new Date(robe.borrowDate).toLocaleString('he-IL'),
             robe.returnDate ? new Date(robe.returnDate).toLocaleString('he-IL') : '-',
             getStatusText(robe.status)
@@ -198,7 +258,7 @@ exportCSVBtn.addEventListener('click', () => {
 // Export to TXT
 exportTXTBtn.addEventListener('click', () => {
     const txtContent = robes.map(robe => 
-        `מספר גלימה: ${robe.id}
+        `מספר גלימה: ${robe.robeId}
 תאריך השאלה: ${new Date(robe.borrowDate).toLocaleString('he-IL')}
 תאריך החזרה: ${robe.returnDate ? new Date(robe.returnDate).toLocaleString('he-IL') : '-'}
 סטטוס: ${getStatusText(robe.status)}
@@ -210,5 +270,4 @@ exportTXTBtn.addEventListener('click', () => {
 });
 
 // Initialize the application
-updateStats();
-updateHistoryTable(); 
+loadData(); 
