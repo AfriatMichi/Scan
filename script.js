@@ -1,10 +1,13 @@
 // Initialize variables
-let html5QrcodeScanner = null;
+let borrowScanner = null;
+let returnScanner = null;
 let robes = JSON.parse(localStorage.getItem('robes')) || [];
 
 // DOM Elements
-const startScanBtn = document.getElementById('startScan');
-const stopScanBtn = document.getElementById('stopScan');
+const startBorrowScanBtn = document.getElementById('startBorrowScan');
+const stopBorrowScanBtn = document.getElementById('stopBorrowScan');
+const startReturnScanBtn = document.getElementById('startReturnScan');
+const stopReturnScanBtn = document.getElementById('stopReturnScan');
 const exportCSVBtn = document.getElementById('exportCSV');
 const exportTXTBtn = document.getElementById('exportTXT');
 const historyTable = document.getElementById('historyTable').getElementsByTagName('tbody')[0];
@@ -42,15 +45,13 @@ function getStatusText(status) {
     return statusMap[status] || status;
 }
 
-// Handle QR code scan
-function onScanSuccess(decodedText) {
+// Handle QR code scan for borrowing
+function onBorrowScanSuccess(decodedText) {
     const robeId = decodedText.trim();
     const existingRobe = robes.find(r => r.id === robeId);
 
     if (existingRobe) {
-        // Return robe
-        existingRobe.status = 'returned';
-        existingRobe.returnDate = new Date().toISOString();
+        alert('גלימה זו כבר מושאלת!');
     } else {
         // Borrow new robe
         robes.push({
@@ -59,32 +60,86 @@ function onScanSuccess(decodedText) {
             returnDate: null,
             status: 'borrowed'
         });
-    }
 
-    // Save to localStorage and update UI
-    localStorage.setItem('robes', JSON.stringify(robes));
-    updateStats();
-    updateHistoryTable();
+        // Save to localStorage and update UI
+        localStorage.setItem('robes', JSON.stringify(robes));
+        updateStats();
+        updateHistoryTable();
+        
+        // Stop scanner after successful scan
+        if (borrowScanner) {
+            borrowScanner.stop();
+        }
+    }
+}
+
+// Handle QR code scan for returning
+function onReturnScanSuccess(decodedText) {
+    const robeId = decodedText.trim();
+    const existingRobe = robes.find(r => r.id === robeId);
+
+    if (!existingRobe) {
+        alert('גלימה זו לא מושאלת!');
+    } else if (existingRobe.status === 'returned') {
+        alert('גלימה זו כבר הוחזרה!');
+    } else {
+        // Return robe
+        existingRobe.status = 'returned';
+        existingRobe.returnDate = new Date().toISOString();
+
+        // Save to localStorage and update UI
+        localStorage.setItem('robes', JSON.stringify(robes));
+        updateStats();
+        updateHistoryTable();
+        
+        // Stop scanner after successful scan
+        if (returnScanner) {
+            returnScanner.stop();
+        }
+    }
 }
 
 // Initialize QR Scanner
-function initScanner() {
-    html5QrcodeScanner = new Html5Qrcode("reader");
+function initBorrowScanner() {
+    if (!borrowScanner) {
+        borrowScanner = new Html5Qrcode("borrowReader");
+    }
 }
 
-// Start scanning
-startScanBtn.addEventListener('click', () => {
-    if (!html5QrcodeScanner) {
-        initScanner();
+function initReturnScanner() {
+    if (!returnScanner) {
+        returnScanner = new Html5Qrcode("returnReader");
     }
+}
+
+// Start scanning for borrowing
+startBorrowScanBtn.addEventListener('click', () => {
+    initBorrowScanner();
     
-    html5QrcodeScanner.start(
+    borrowScanner.start(
         { facingMode: "environment" },
         {
             fps: 10,
             qrbox: { width: 250, height: 250 }
         },
-        onScanSuccess,
+        onBorrowScanSuccess,
+        (error) => {
+            // Ignore errors
+        }
+    );
+});
+
+// Start scanning for returning
+startReturnScanBtn.addEventListener('click', () => {
+    initReturnScanner();
+    
+    returnScanner.start(
+        { facingMode: "environment" },
+        {
+            fps: 10,
+            qrbox: { width: 250, height: 250 }
+        },
+        onReturnScanSuccess,
         (error) => {
             // Ignore errors
         }
@@ -92,9 +147,15 @@ startScanBtn.addEventListener('click', () => {
 });
 
 // Stop scanning
-stopScanBtn.addEventListener('click', () => {
-    if (html5QrcodeScanner) {
-        html5QrcodeScanner.stop();
+stopBorrowScanBtn.addEventListener('click', () => {
+    if (borrowScanner) {
+        borrowScanner.stop();
+    }
+});
+
+stopReturnScanBtn.addEventListener('click', () => {
+    if (returnScanner) {
+        returnScanner.stop();
     }
 });
 
