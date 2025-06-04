@@ -1,0 +1,35 @@
+body {
+    background-color: #f8f9fa;
+}
+
+.card {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.stats {
+    font-size: 1.1em;
+}
+
+.stats p {
+    margin-bottom: 0.5rem;
+}
+
+#reader {
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.table th {
+    background-color: #f8f9fa;
+}
+
+.btn {
+    margin: 0 5px;
+}
+
+@media (max-width: 768px) {
+    .btn {
+        margin: 5px;
+    }
+} 
